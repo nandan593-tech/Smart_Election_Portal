@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SafeReport — Emergency Officer Account Services</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        :root {
+            --bg-body: #f4f7f6;
+            --bg-card: #ffffff;
+            --bg-card-alt: #f1f5f9;
+            --color-red: #dc2626;
+            --color-red-dark: #b91c1c;
+            --color-cyan: #2563eb;
+            --color-green: #16a34a;
+            --color-orange: #d97706;
+            --color-blue: #1d4ed8;
+            --color-grey: #64748b;
+            --color-white: #ffffff;
+            --color-text: #1e293b;
+            --font-body: 'Inter', 'DM Sans', sans-serif;
+            --font-mono: 'JetBrains Mono', 'Space Mono', monospace;
+            --font-brand: 'Inter', 'Bebas Neue', sans-serif;
+            --nav-height: 60px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { background-color: var(--bg-body); color: var(--color-text); font-family: var(--font-body); line-height: 1.5; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
+
+        /* --- Animations --- */
+        @keyframes strobe { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        @keyframes pulseRed { 0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); } 70% { box-shadow: 0 0 0 20px rgba(220, 38, 38, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); } }
+        @keyframes pop { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes wave { 0% { height: 5px; } 50% { height: 25px; } 100% { height: 5px; } }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 50% { transform: translateX(10px); } 75% { transform: translateX(-10px); } }
+
+        /* --- Auth Layer --- */
+        #auth-overlay { position: fixed; inset: 0; z-index: 9000; background: var(--bg-body); display: flex; align-items: center; justify-content: center; padding: 1rem; }
+        .auth-card { background: var(--bg-card); border-radius: 16px; width: 100%; max-width: 400px; padding: 2.5rem; box-shadow: 0 10px 40px rgba(0,0,0,0.08); display: none; border: 1px solid #e2e8f0; }
+        .auth-card.active { display: block; animation: pop 0.4s ease; }
+        .input-ui { width: 100%; background: var(--bg-card-alt); border: 1px solid #cbd5e1; color: var(--color-text); padding: 1rem; border-radius: 12px; margin-bottom: 1rem; font-family: inherit; font-size: 1rem; outline: none; transition: 0.2s; font-weight: 500;}
+        .input-ui:focus { border-color: var(--color-blue); background: #ffffff; box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.1); }
+        .auth-btn { width: 100%; background: var(--color-blue); color: white; border: none; padding: 1.1rem; border-radius: 12px; font-family: var(--font-body); font-weight: 800; font-size: 1.2rem; cursor: pointer; transition: 0.2s; margin-top: 1rem; }
+        .auth-btn:hover { background: #1e40af; }
+
+        /* --- App Top Bar --- */
+        nav { position: fixed; top: 0; left: 0; right: 0; height: var(--nav-height); background: var(--color-blue); color: white; display: flex; align-items: center; justify-content: space-between; padding: 0 1.5rem; z-index: 5000; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .gov-logo { font-size: 1.1rem; font-weight: 800; display: flex; align-items: center; gap: 8px; font-family: var(--font-brand); letter-spacing: 0.5px; }
+        .lang-toggles { display: flex; gap: 4px; background: rgba(255,255,255,0.15); padding: 4px; border-radius: 50px; }
+        .lang-pill { border: none; background: none; color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 50px; cursor: pointer; transition: 0.2s; }
+        .lang-pill.active { background: var(--color-white); color: var(--color-blue); }
+
+        /* --- Main Layout --- */
+        #app-wrapper { display: none; padding: calc(var(--nav-height) + 1.5rem) 1rem 2rem; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+        #civilian-sos-card { width: 100%; max-width: 480px; background: var(--bg-card); border-radius: 16px; overflow: hidden; box-shadow: 0 12px 35px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; display: flex; flex-direction: column; }
+        
+        /* Personnel Views */
+        #admin-police-view { display: none; width: 100%; max-width: 1200px; margin-top: 2rem; }
+        #officer-dashboard { display: none; width: 100%; max-width: 440px; margin-top: 2rem; background: var(--bg-card); border-radius: 16px; box-shadow: 0 12px 35px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; padding: 1.5rem; text-align: center; }
+        body.role-admin #civilian-sos-card, body.role-police #civilian-sos-card, body.role-officer #civilian-sos-card { display: none; }
+        body.role-admin #admin-police-view, body.role-police #admin-police-view { display: block; }
+        body.role-officer #officer-dashboard { display: block; }
+        body.role-police .admin-only-btn { display: none !important; }
+        body.role-police .admin-only-select { pointer-events: none; border-color: transparent !important; background: transparent !important; -webkit-appearance: none; -moz-appearance: none; appearance: none; padding-left: 0 !important; cursor: default; font-weight: 700; opacity: 0.9; }
+
+        /* --- Leaflet Tweaks & Tabs --- */
+        .leaflet-container { background: #e2e8f0 !important; font-family: var(--font-body) !important; z-index: 1 !important; border-radius: 12px; border: 1px solid #cbd5e1; }
+        .tab-btn { flex: 1; padding: 12px; border: none; background: #f8fafc; color: var(--color-grey); font-family: var(--font-body); font-size: 0.9rem; font-weight: 700; cursor: pointer; transition: 0.2s; border-bottom: 2px solid #e2e8f0; }
+        .tab-btn:hover { background: #f1f5f9; }
+        .tab-btn.active { color: var(--color-blue); border-bottom: 3px solid var(--color-blue); background: #ffffff; }
+        .tab-content { display: none; height: 100%; overflow-y: auto; padding: 2rem; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 16px 16px; }
+        .tab-content.active { display: block; }
+
+        .duty-status { display: inline-block; padding: 6px 16px; border-radius: 50px; font-size: 13px; font-weight: 700; border: 1px solid #cbd5e1; color: var(--color-grey); margin-bottom: 2rem; }
+        .duty-status.on { border-color: var(--color-green); color: var(--color-green); background: #dcfce7; }
+        .duty-status.off { border-color: var(--color-red); color: var(--color-red); background: #fee2e2; }
+        .duty-btn { width: 100%; padding: 1.1rem; border-radius: 12px; border: none; font-size: 1.1rem; font-weight: 800; cursor: pointer; transition: 0.2s; margin-bottom: 1rem; }
+        .duty-btn-start { background: var(--color-green); color: white; box-shadow: 0 4px 10px rgba(22, 163, 74, 0.2); }
+        .duty-btn-end { background: var(--color-red); color: white; display: none; box-shadow: 0 4px 10px rgba(220, 38, 38, 0.2); }
+        .live-coords { font-family: var(--font-mono); font-size: 13px; color: var(--color-text); background: var(--bg-card-alt); padding: 1.2rem; border-radius: 12px; margin-top: 1rem; text-align: left; border: 1px solid #e2e8f0; }
+
+        /* --- Section: GPS Bar --- */
+        .gps-status-bar { height: 50px; width: 100%; display: flex; align-items: center; padding: 0 1.2rem; font-size: 15px; font-weight: 700; gap: 10px; transition: 0.3s; border-bottom: 1px solid #e2e8f0; }
+        .gps-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .gps-capturing { background: #eff6ff; color: var(--color-blue); }
+        .gps-capturing .gps-dot { background: var(--color-blue); animation: strobe 1s infinite; }
+        .gps-success { background: #f0fdf4; color: var(--color-green); }
+        .gps-success .gps-dot { background: var(--color-green); }
+        .gps-error { background: #fef2f2; color: var(--color-red); }
+        .gps-error .gps-dot { background: var(--color-red); animation: strobe 0.5s infinite; }
+
+        /* --- Section: Incident Grid --- */
+        .sos-container { padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem; }
+        .section-title { font-size: 20px; font-weight: 800; color: var(--color-text); text-align: center; }
+        .incident-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .type-btn { height: 110px; background: var(--bg-card-alt); border: 2px solid transparent; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; gap: 6px; }
+        .type-btn .emoji { font-size: 36px; }
+        .type-btn .en { font-size: 15px; font-weight: 800; color: var(--color-text); }
+        .type-btn .te, .type-btn .hi { font-size: 13px; color: var(--color-grey); font-weight: 600; }
+        .type-btn.selected { border-color: var(--color-red); background: #fef2f2; transform: scale(1.02); box-shadow: 0 4px 12px rgba(220, 38, 38, 0.15); }
+
+        /* --- Section: Mic & Photo --- */
+        .mic-section { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+        .mic-btn { width: 80px; height: 80px; border-radius: 50%; background: var(--color-blue); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; position: relative; box-shadow: 0 4px 15px rgba(29, 78, 216, 0.3); }
+        .mic-btn.listening { background: var(--color-red); animation: pulseRed 1.5s infinite; }
+        .waveform { display: none; align-items: center; gap: 6px; height: 40px; }
+        .mic-btn.listening .waveform { display: flex; }
+        .mic-btn.listening .mic-icon { display: none; }
+        .bar { width: 4px; background: var(--color-white); border-radius: 3px; animation: wave 0.6s infinite ease-in-out; }
+        .bar:nth-child(2) { animation-delay: 0.1s; }
+        .bar:nth-child(3) { animation-delay: 0.2s; }
+        
+        .photo-btn { width: 100%; height: 50px; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 12px; color: var(--color-grey); font-weight: 700; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s;}
+        .photo-btn.added { background: #dcfce7; border-style: solid; border-color: var(--color-green); color: var(--color-green); }
+
+        /* --- The BIG Button --- */
+        .master-call-btn { width: 100%; height: 85px; background: var(--color-red); color: white; border: none; border-radius: 16px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.2s; box-shadow: 0 8px 25px rgba(220, 38, 38, 0.3); position: relative; overflow: hidden; }
+        .master-call-btn:active { transform: scale(0.97); box-shadow: 0 4px 10px rgba(220, 38, 38, 0.3); }
+        .master-call-btn .btn-text-main { font-size: 24px; font-weight: 900; line-height: 1.1; display:flex; align-items:center; gap:8px;}
+        .master-call-btn .btn-text-sub { font-size: 15px; font-weight: 700; line-height: 1; margin-top: 4px; opacity: 0.9; }
+        .pulse-layer { position: absolute; inset: 0; background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%); animation: strobe 2s infinite; pointer-events: none; }
+
+        /* --- Success View --- */
+        #success-screen { display: none; padding: 3rem 2rem; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 1.5rem; animation: pop 0.4s ease; }
+        .success-check { width: 80px; height: 80px; border-radius: 50%; background: var(--color-green); display: flex; align-items: center; justify-content: center; font-size: 40px; margin-bottom: 0.5rem; color: white; box-shadow: 0 10px 25px rgba(22, 163, 74, 0.3); }
+        .success-title { font-size: 26px; font-weight: 900; line-height: 1.2; color: var(--color-text); }
+        .officer-box { width: 100%; background: #eff6ff; border: 1px solid #bfdbfe; padding: 1.5rem; border-radius: 16px; text-align: left; position: relative; margin-top: 10px; }
+        .officer-name { font-weight: 900; color: var(--color-blue); margin-bottom: 4px; display: block; font-size: 18px; }
+        .officer-line { font-size: 15px; color: var(--color-grey); display: block; font-weight: 600; }
+        .eta-circle { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 50px; height: 50px; border-radius: 50%; background: var(--color-blue); color: #fff; position: absolute; top: -25px; right: 20px; box-shadow: 0 4px 12px rgba(29, 78, 216, 0.3); font-weight: 800; line-height: 1; border: 3px solid white; }
+        
+        .step-list { width: 100%; display: flex; flex-direction: column; gap: 12px; margin-top: 1rem; text-align: left; background: var(--bg-card-alt); padding: 1rem; border-radius: 12px;}
+        .step { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 700; color: var(--color-grey); opacity: 0.5; transition: 0.3s; }
+        .step.done { color: var(--color-green); opacity: 1; }
+        .step.active { color: var(--color-blue); opacity: 1; }
+        .step.active .step-icon { animation: strobe 1s infinite; }
+
+        /* --- Mini Map --- */
+        #mini-dispatch-map { width: 100%; height: 160px; background: #080a0f; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 1rem; position: relative; overflow: hidden; display: none; }
+        .radar-grid { position: absolute; inset: 0; background-image: radial-gradient(rgba(34,211,238,0.15) 1px, transparent 1px); background-size: 20px 20px; }
+        .map-dot { position: absolute; width: 12px; height: 12px; border-radius: 50%; transform: translate(-50%, -50%); z-index: 10; border: 2px solid white; }
+        .map-dot.victim { background: var(--color-red); box-shadow: 0 0 15px var(--color-red); animation: strobe 1s infinite; }
+        .map-dot.officer { background: var(--color-cyan); box-shadow: 0 0 15px var(--color-cyan); }
+        .route-line { position: absolute; z-index: 5; opacity: 0.6; pointer-events: none; stroke: var(--color-cyan); stroke-width: 2; stroke-dasharray: 4; animation: dash 20s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -1000; } }
+
+        /* Utils */
+        .hidden { display: none !important; }
+        [data-lang]:not(.active-lang) { display: none !important; }
+    </style>
+</head>
+<body id="master-body">
+
+    <!-- AUTHENTICATION -->
+    <div id="auth-overlay">
+        <div id="login-card" class="auth-card active">
+            <h2 style="font-family: var(--font-brand); font-size: 3rem; color: var(--color-red); text-align: center; line-height: 1; margin-bottom: 2rem;">SafeReport Access</h2>
+            <input type="email" id="u-email" class="input-ui" placeholder="Access ID / Email">
+            <input type="password" id="u-pass" class="input-ui" placeholder="Password">
+            <button class="auth-btn" onclick="handleLogin()">🔐 INITIALIZE</button>
+            <div style="text-align: center; margin-top: 1rem; font-size: 13px;">
+                <span style="color:var(--color-blue); cursor:pointer;" onclick="toggleAuth('signup')">Create Emergency Account</span>
+            </div>
+            <div style="margin-top: 1.5rem; display: flex; gap: 8px;">
+                <button onclick="fillDemo('admin')" style="flex:1; padding: 10px; font-size: 10px; border: 1px solid var(--color-orange); color:var(--color-orange); background:none; border-radius: 8px;">ADMIN</button>
+                <button onclick="toggleAuth('officer')" style="flex:1; padding: 10px; font-size: 10px; border: 1px solid var(--color-green); color:var(--color-green); background:none; border-radius: 8px;">PATROL LOGIN (OTP)</button>
+            </div>
+        </div>
+        <div id="signup-card" class="auth-card">
+            <h2 style="font-family: var(--font-brand); font-size: 2.2rem; color: var(--color-blue); text-align: center; line-height: 1; margin-bottom: 2rem;">Officer Account Services</h2>
+            <input type="text" id="reg-name" class="input-ui" placeholder="Full Name">
+            <input type="email" id="reg-email" class="input-ui" placeholder="Email">
+            <input type="password" id="reg-pass" class="input-ui" placeholder="Password">
+            <button class="auth-btn" style="background:var(--color-blue)" onclick="handleSignup()">📝 REGISTER</button>
+            <div style="text-align: center; margin-top: 1rem; font-size: 13px;">
+                <span style="color:var(--color-blue); cursor:pointer;" onclick="toggleAuth('login')">Back to Login</span>
+            </div>
+        </div>
+        <div id="officer-card" class="auth-card">
+            <h2 style="font-family: var(--font-brand); font-size: 3rem; color: var(--color-green); text-align: center; line-height: 1; margin-bottom: 2rem;">Officer Portal</h2>
+            <input type="tel" id="o-phone" class="input-ui" placeholder="Registered Mobile No." oninput="document.getElementById('otp-group').style.display='none'; document.getElementById('o-otp').value='';">
+            <button class="auth-btn" id="btn-send-otp" style="background:var(--color-green)" onclick="sendOfficerOTP()">📩 SEND OTP</button>
+            
+            <div id="otp-group" style="display:none; margin-top: 1rem;">
+                <input type="text" id="o-otp" class="input-ui" placeholder="Enter Secure OTP">
+                <button class="auth-btn" style="background:var(--color-blue)" onclick="handleOfficerLogin()">🛡 INITIATE DUTY</button>
+            </div>
+
+            <div style="text-align: center; margin-top: 1rem; font-size: 13px;">
+                <span style="color:var(--color-blue); cursor:pointer;" onclick="toggleAuth('login')">Civilian Login</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADD OFFICER MODAL -->
+    <div id="add-officer-modal" style="display:none; position: fixed; inset: 0; z-index: 9500; background: rgba(11,13,18,0.9); align-items: center; justify-content: center; padding: 1rem;">
+        <div class="auth-card active" style="display:block; max-width: 450px;">
+            <h2 style="font-family: var(--font-brand); font-size: 2.3rem; color: var(--color-blue); text-align: center; line-height: 1; margin-bottom: 1.5rem;">Add Police Officer</h2>
+            <input type="text" id="new-off-id" class="input-ui" placeholder="Personal ID (Unique Badge)">
+            <input type="text" id="new-off-name" class="input-ui" placeholder="Officer Name">
+            <select id="new-off-rank" class="input-ui" style="appearance: none; background-color: var(--bg-card-alt); color: var(--color-white); outline: none;">
+                <option value="" disabled selected>Select Rank</option>
+                <option value="Constable">Constable</option>
+                <option value="Head Constable">Head Constable</option>
+                <option value="Sub-Inspector (SI)">Sub-Inspector (SI)</option>
+                <option value="Inspector">Inspector</option>
+                <option value="DSP">DSP</option>
+            </select>
+            <input type="tel" id="new-off-phone" class="input-ui" placeholder="Mobile Number (for alerts)">
+            <input type="email" id="new-off-email" class="input-ui" placeholder="Officer Email Address">
+            
+            <div style="display: flex; gap: 10px; margin-top: 1rem;">
+                <button class="auth-btn" style="background:var(--color-grey); flex:1; padding:0.8rem; font-size: 1.1rem;" onclick="document.getElementById('add-officer-modal').style.display='none'">CANCEL</button>
+                <button class="auth-btn" style="background:var(--color-blue); flex:2; padding:0.8rem; font-size: 1.3rem;" onclick="saveNewOfficer()">💾 SAVE DETAILS</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <nav>
+        <div class="gov-logo">🏛️ SafeReport Gov Portal</div>
+        <div class="lang-toggles">
+            <button class="lang-pill active" onclick="setLanguage('en')">English</button>
+            <button class="lang-pill" onclick="setLanguage('te')">తెలుగు</button>
+            <button class="lang-pill" onclick="setLanguage('hi')">हिंदी</button>
+        </div>
+        <button onclick="handleLogout()" style="background:none; border:none; color:var(--color-red); font-size: 24px;">🚪</button>
+    </nav>
+
+    <div id="app-wrapper">
+        
+        <!-- --- CIVILIAN SOS VIEW --- -->
+        <div id="civilian-sos-card">
+            <!-- GPS Status Bar -->
+            <div id="gps-bar" class="gps-status-bar gps-capturing">
+                <div class="gps-dot"></div>
+                <div class="lang-txt" data-en="📍 Getting your location..." data-te="📍 మీ లొకేషన్ తీసుకుంటున్నాం" data-hi="📍 आपका स्थान लिया जा रहा है">Getting your location...</div>
+            </div>
+
+            <div id="sos-main-content">
+                <div class="sos-container">
+                    <!-- Incident Selection -->
+                    <div>
+                        <h2 class="section-title">
+                            <span class="lang-txt" data-en="What happened?" data-te="ఏమి జరిగింది?" data-hi="क्या हुआ?">What happened?</span>
+                        </h2>
+                        <div class="incident-grid">
+                            <button class="type-btn" onclick="selectType(this, 'Assault')">
+                                <span class="emoji">🚨</span>
+                                <span class="en">Assault</span>
+                                <span class="te">దాడి</span>
+                            </button>
+                            <button class="type-btn" onclick="selectType(this, 'Theft')">
+                                <span class="emoji">👜</span>
+                                <span class="en">Theft</span>
+                                <span class="te">దొంగతనం</span>
+                            </button>
+                            <button class="type-btn" onclick="selectType(this, 'Eve Teasing')">
+                                <span class="emoji">😠</span>
+                                <span class="en">Eve Teasing</span>
+                                <span class="te">ఈవ్ టీజింగ్</span>
+                            </button>
+                            <button class="type-btn" onclick="selectType(this, 'Accident')">
+                                <span class="emoji">🚗</span>
+                                <span class="en">Accident</span>
+                                <span class="te">ప్రమాదం</span>
+                            </button>
+                            <button class="type-btn" onclick="selectType(this, 'Suspicious')">
+                                <span class="emoji">👤</span>
+                                <span class="en">Suspicious</span>
+                                <span class="te">అనుమానాస్పద</span>
+                            </button>
+                            <button class="type-btn" onclick="selectType(this, 'Other')">
+                                <span class="emoji">📋</span>
+                                <span class="en">Other</span>
+                                <span class="te">ఇతర</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Voice Details -->
+                    <div class="mic-section">
+                        <button id="mic-btn" class="mic-btn" onclick="toggleSpeech()">
+                            <div class="mic-icon" style="font-size: 44px;">🎤</div>
+                            <div class="waveform"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+                        </button>
+                        <div style="text-align: center;">
+                            <div class="lang-txt" style="font-weight: 800; font-size: 20px;" data-en="Tap to speak" data-te="మాట్లాడటానికి నొక్కండి" data-hi="बोलने के लिए दबाएं">Tap to speak</div>
+                            <div id="mic-status" class="lang-txt" style="font-size: 14px; color: var(--color-white); margin-top: 4px; opacity: 0.9;" data-en="Explain briefly" data-te="క్లుప్తంగా చెప్పండి" data-hi="संक्षेप में बताएं">Explain briefly</div>
+                        </div>
+                        <div id="speech-transcript" style="display: none; width: 100%; background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.2); padding: 12px; border-radius: 12px; font-size: 14px; text-align: center;"></div>
+                        <a href="#" onclick="toggleText()" style="font-size: 12px; color: var(--color-grey); text-decoration: none;">⌨ <span class="lang-txt" data-en="Type instead" data-te="బదులుగా టైప్ చేయండి" data-hi="बదులుగా టైప్ చేయండి">Type instead</span></a>
+                        <textarea id="manual-text" class="input-ui hidden" rows="3" style="margin-top: 10px;"></textarea>
+                    </div>
+
+                    <!-- Photo Button -->
+                    <button id="add-photo-btn" class="photo-btn" onclick="document.getElementById('photo-input').click()">
+                        <span class="emoji">📷</span>
+                        <span class="lang-txt" data-en="Add Photo (Optional)" data-te="ఫోటో జోడించు (ఐచ్ఛిక)" data-hi="फोटो जोड़ें (वैकल्पिक)">Add Photo (Optional)</span>
+                    </button>
+                    <input type="file" id="photo-input" accept="image/*" capture="camera" style="display: none;" onchange="handlePhoto(this)">
+
+                    <!-- THE BIG CALL BUTTON -->
+                    <button id="master-call-btn" class="master-call-btn" onclick="dispatchSOS()">
+                        <div class="pulse-layer"></div>
+                        <div class="btn-text-main lang-txt" data-en="🚨 CALL POLICE NOW" data-te="🚨 పోలీసులను పిలవండి" data-hi="🚨 पुलिस को बुलाएं">CALL POLICE NOW</div>
+                        <div id="call-subtext" class="btn-text-sub lang-txt" data-en="Instant Dispatch" data-te="వెంటనే వస్తారు" data-hi="तुरंत आएंगे">Instant Dispatch</div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- SUCCESS SCREEN VIEW -->
+            <div id="success-view" class="hidden">
+                <div id="success-screen">
+                    <div class="success-check">✅</div>
+                    <div class="success-title">
+                        <div class="lang-txt" data-en="Help is coming!" data-te="సహాయం వస్తోంది!" data-hi="మదద్ ఆ రహీ హై!">Help is coming!</div>
+                        <div class="lang-txt" style="font-size: 16px; font-weight: 500; opacity: 0.8; margin-top: 8px;" data-en="Police called successfully" data-te="పోలీసులు పిలిచారు" data-hi="పోలీసులు పిలిచారు">Police called successful</div>
+                    </div>
+
+                    <!-- MINIMAP VECTOR -->
+                    <div id="mini-dispatch-map">
+                        <div class="radar-grid"></div>
+                        <svg width="100%" height="100%" style="position:absolute; top:0; left:0; z-index:5;">
+                            <line id="route-svg-line" class="route-line" x1="0" y1="0" x2="0" y2="0" />
+                        </svg>
+                        <div id="map-dot-officer" class="map-dot officer" style="top:0; left:0;"></div>
+                        <div id="map-dot-victim" class="map-dot victim" style="top:0; left:0;"></div>
+                    </div>
+
+                    <div class="officer-box">
+                        <div class="eta-circle">
+                            <span style="font-size: 18px; font-weight: 800;">3</span>
+                            <span style="font-size: 10px;">MIN</span>
+                        </div>
+                        <span class="officer-name lang-txt" data-en="Sgt. Ramaiah" data-te="సార్జెంట్ రామయ్య" data-hi="सार्जेंट रामैया">Sgt. Ramaiah</span>
+                        <span class="officer-line lang-txt" data-en="Officer found 0.4km away" data-te="0.4కిమీ దూరంలో అధికారి దొరికారు" data-hi="0.4 किमी दूर अधिकारी मिला">Officer found 0.4km away</span>
+                        <a id="success-maps-link" href="#" target="_blank" style="display: block; font-family: var(--font-mono); font-size: 11px; margin-top: 10px; color: var(--color-blue); text-decoration: none;">📍 View Victim Target Map</a>
+                        <span class="officer-line" style="font-family: var(--font-mono); font-size: 10px; margin-top: 10px;">REF: INC-7842</span>
+                    </div>
+
+                    <div class="step-list">
+                        <div class="step" id="step-1"><span class="step-icon">✅</span> <span class="lang-txt" data-en="Location sent" data-te="లొకేషన్ పంపాము" data-hi="स्थान भेजा गया">Location sent</span></div>
+                        <div class="step" id="step-2"><span class="step-icon">✅</span> <span class="lang-txt" data-en="Nearest officer found" data-te="సమీప అధికారి దొరికారు" data-hi="अधिकारी मिला">Nearest officer found</span></div>
+                        <div id="step-active" class="step active"><span class="step-icon">📞</span> <span class="lang-txt" data-en="Calling officer..." data-te="పోలీసులకు ఫోన్ చేస్తున్నాం..." data-hi="कॉल कर रहे हैं...">Calling officer...</span></div>
+                        <div class="step" id="step-3"><span class="step-icon">✅</span> <span class="lang-txt" data-en="Officer notified" data-te="అధికారికి సమాచారం అందింది" data-hi="अधिकारी सूचित">Officer notified</span></div>
+                    </div>
+
+                    <button class="photo-btn" style="margin-top: 2rem;" onclick="resetSOS()">
+                        <span class="lang-txt" data-en="🔄 Report Another" data-te="🔄 మళ్ళీ నివేదించు" data-hi="🔄 మళ్ళీ నివేదించు">Report Another</span>
+                    </button>
+                    <p style="font-size: 11px; color: var(--color-grey); margin-top: 1rem;">Keep your phone near you.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- FIELD OFFICER DASHBOARD -->
+        <div id="officer-dashboard">
+            <div class="duty-status off" id="duty-badge">🔴 OFF DUTY</div>
+            <h2 style="font-size: 24px; margin-bottom: 4px;" id="officer-name-display">Officer Name</h2>
+            <div style="font-family: var(--font-mono); font-size: 14px; color: var(--color-grey); margin-bottom: 2rem;" id="officer-badge-display">BADGE: ---</div>
+            
+            <button class="duty-btn duty-btn-start" id="btn-start-duty" onclick="toggleDuty(true)">START PATROL DUTY</button>
+            <button class="duty-btn duty-btn-end" id="btn-end-duty" onclick="toggleDuty(false)" style="margin-bottom: 10px; display:none;">END PATROL DUTY</button>
+            <button class="duty-btn" id="btn-req-leave" onclick="requestLeave()" style="margin-bottom: 2rem; display:block; background: rgba(249, 115, 22, 0.2); border-color: var(--color-orange); color: var(--color-orange);">🛑 COMPLAINT / SEEK LEAVE</button>
+            
+            <div id="leave-status-indicator" style="display:none; text-align:center; padding: 10px; background: rgba(255,255,255,0.05); color: var(--color-orange); font-family:var(--font-mono); font-size: 0.75rem; border-radius: 8px; margin-bottom: 1rem; border: 1px dashed var(--color-orange);">
+                ⏳ LEAVE PENDING ADMIN APPROVAL...
+            </div>
+            
+            <div id="officer-incident-panel" style="display:none; background:rgba(240,62,90,0.1); border:1px solid var(--color-red); border-radius:12px; padding:1rem; margin-bottom:1rem; text-align:left;">
+                <h3 style="color:var(--color-red); font-size:16px; margin-bottom:8px;">🚨 ACTIVE TARGET ROUTE</h3>
+                <!-- MINIMAP VECTOR -->
+                <div id="officer-dispatch-map" style="width: 100%; height: 160px; background: #080a0f; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 8px; position: relative; overflow: hidden; display: none;">
+                    <div class="radar-grid"></div>
+                    <svg width="100%" height="100%" style="position:absolute; top:0; left:0; z-index:5;">
+                        <line id="route-svg-line-officer-" class="route-line" x1="0" y1="0" x2="0" y2="0" />
+                    </svg>
+                    <div id="map-dot-officer-field" class="map-dot officer" style="top:0; left:0;"></div>
+                    <div id="map-dot-victim-field" class="map-dot victim" style="top:0; left:0;"></div>
+                </div>
+                <div style="font-size:12px; color:white; font-family:var(--font-mono);">
+                    TYPE: <span id="officer-incident-type" style="color:var(--color-orange);">--</span><br>
+                    TARGET: <span id="officer-incident-coords" style="color:var(--color-cyan);">--</span>
+                </div>
+                <a id="officer-maps-link" href="#" target="_blank" style="display:block; width:100%; padding:10px; margin-top:10px; text-align:center; background:var(--color-blue); color:white; text-decoration:none; border-radius:8px; font-weight:bold;">📍 OPEN LIVE GPS TRACKING</a>
+                <!-- OFF DUTY BUTTON -->
+                <button onclick="resolveOfficerIncident()" style="width: 100%; border: none; padding: 12px; background: rgba(34, 197, 94, 0.2); border: 1px solid var(--color-green); color: var(--color-green); border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 15px; transition: 0.2s;" onmouseover="this.style.background='rgba(34, 197, 94, 0.4)'" onmouseout="this.style.background='rgba(34, 197, 94, 0.2)'">✅ COMPLETE INCIDENT</button>
+            </div>
+
+            <div class="live-coords">
+                <strong>LIVE TELEMETRY</strong> <span id="gps-status-indicator" style="float: right;">🔴 Stopped</span><br>
+                <div style="margin-top: 8px; opacity: 0.8;">
+                    LAT: <span id="telemetry-lat" style="color: var(--color-cyan)">WAITING...</span><br>
+                    LNG: <span id="telemetry-lng" style="color: var(--color-cyan)">WAITING...</span>
+                </div>
+                <div id="gps-last-sync" style="margin-top: 8px; font-size: 10px; color: var(--color-grey);">Last updated: --</div>
+            </div>
+        </div>
+
+        <!-- PERSONNEL VIEWS (Command HQ & Field Unit) -->
+        <div id="admin-police-view" style="width: 100%; height: calc(100vh - var(--nav-height));">
+            <div style="display: grid; grid-template-columns: 320px 1fr 340px; gap: 1rem; padding: 1rem; width: 100%; height: 100%;">
+                <!-- Left: Unit Tracker -->
+                <aside class="panel" style="background: var(--bg-card); border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); overflow: hidden; display: flex; flex-direction: column;">
+                    <div style="padding: 10px 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.5);">
+                        <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-cyan); font-weight: 700;">🛰 COMMAND CONSOLE</span>
+                        <button onclick="document.getElementById('add-officer-modal').style.display='flex'" class="admin-only-btn" style="background:var(--color-blue); color:white; border:none; padding:5px 10px; border-radius:6px; font-weight:700; cursor:pointer; font-size: 0.75rem; font-family:var(--font-body);">+ Add Officer</button>
+                    </div>
+
+                    <div style="display: flex; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <button class="tab-btn active" onclick="switchAdminTab('phase1')">PHASE 1: DISPATCH</button>
+                        <button class="tab-btn" onclick="switchAdminTab('phase2')">PHASE 2: FLEET</button>
+                    </div>
+
+                    <!-- Phase 1: Dispatches (Incidents) -->
+                    <div id="phase1" class="tab-content active" style="flex: 1;">
+                        <div id="phase1-stats" style="margin-bottom: 15px; font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-grey);">Loading Active Dispatches...</div>
+                        <div id="active-incidents-list"></div>
+                    </div>
+
+                    <!-- Phase 2: Fleet Status Overview -->
+                    <div id="phase2" class="tab-content" style="flex: 1;">
+                        <div id="phase2-stats" style="display: flex; justify-content: space-between; margin-bottom: 15px; font-family: var(--font-mono); font-size: 0.7rem;">
+                            <span id="stat-free" style="color:var(--color-green)">🟢 FREE: 0</span>
+                            <span id="stat-assign" style="color:var(--color-cyan)">🔵 DISPATCHED: 0</span>
+                            <span id="stat-busy" style="color:var(--color-orange)">🟠 BUSY: 0</span>
+                        </div>
+                        <div id="unit-list">
+                            <!-- Units injected here via JS -->
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Center: Tactical Map -->
+                <main class="panel" style="background: #080a0f; border-radius: 16px; border: 1px solid var(--color-cyan); position: relative; overflow: hidden; padding: 0;">
+                    <div id="leaflet-tactical-map" style="position: absolute; inset: 0; z-index: 1;"></div>
+                    <div style="position: absolute; bottom: 1rem; left: 1rem; background: rgba(0,0,0,0.8); padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.7rem; color: var(--color-cyan); border: 1px solid var(--color-cyan); z-index: 10;">
+                        📍 ACTIVE GRID: LIVE OSM LEAFLET
+                    </div>
+                </main>
+
+                <!-- Right: Deployment Hub -->
+                <aside class="panel" style="background: var(--bg-card); border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); overflow: hidden; display: flex; flex-direction: column;">
+                    <div style="padding: 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-grey);">🚨 DEPLOYMENT HUB</div>
+                    <div style="padding: 1rem;">
+                        <input type="text" id="i-booth" class="input-ui" value="Polling Booth 201" style="margin-bottom: 0.5rem; font-size: 0.8rem;">
+                        <button class="auth-btn" style="font-size: 1.1rem; padding: 0.8rem;" onclick="adminDispatch()">🚀 AUTO-DISPATCH UNIT</button>
+                    </div>
+                    <div style="padding: 1rem; border-top: 1px solid rgba(255,255,255,0.05); font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-grey);">RECENT LOGS</div>
+                    <div id="alert-logs" style="flex: 1; padding: 1rem; overflow-y: auto; font-size: 0.7rem;"></div>
+                </aside>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- CONFIG & STATE ---
+        const WEBHOOK_URL = 'https://srinivassrinivas.app.n8n.cloud/webhook-test/incident-alert';
+        const OFFICER_WEBHOOK = 'https://srinivassrinivas.app.n8n.cloud/webhook-test/officer-location-update';
+        const GOOGLE_SHEETS_API = 'https://srinivassrinivas.app.n8n.cloud/webhook-test/incident-alert';
+        const ADMIN_CREDS = { email: 'dheeruanumalasetty@gmail.com', pass: 'admin123', role: 'admin' };
+        const POLICE_CREDS = { email: 'srinivassrinivas5921@gmail.com', pass: 'police123', role: 'police' };
+        
+        let defaultOfficers = [];
+        let OFFICERS = JSON.parse(localStorage.getItem('safereport_officers')) || defaultOfficers;
+        
+        let state = {
+            lang: localStorage.getItem('safereport_lang') || 'en',
+            gpsCaptured: false,
+            selectedType: '',
+            isListening: false,
+            photoAdded: false,
+            userRole: '',
+            lat: null,
+            lng: null,
+            locText: ''
+        };
+
+        // --- AUTH ---
+        function toggleAuth(v) {
+            document.querySelectorAll('.auth-card').forEach(c => c.classList.remove('active'));
+            document.getElementById(v + '-card').classList.add('active');
+        }
+
+        function fillDemo(r) {
+            const c = r === 'admin' ? ADMIN_CREDS : POLICE_CREDS;
+            document.getElementById('u-email').value = c.email;
+            document.getElementById('u-pass').value = c.pass;
+        }
+
+        function handleLogin() {
+            const email = document.getElementById('u-email').value.trim();
+            const pass = document.getElementById('u-pass').value.trim();
+            if (email === ADMIN_CREDS.email && pass === ADMIN_CREDS.pass) loginSuccess(ADMIN_CREDS);
+            else if (email === POLICE_CREDS.email && pass === POLICE_CREDS.pass) loginSuccess(POLICE_CREDS);
+            else {
+                const users = JSON.parse(localStorage.getItem('safereport_users') || '[]');
+                const u = users.find(x => x.email === email && x.pass === pass);
+                if (u) loginSuccess(u);
+                else alert("ACCESS DENIED");
+            }
+        }
+
+        let currentOTP = null;
+        let tryingOfficer = null;
+
+        function sendOfficerOTP() {
+            const phone = document.getElementById('o-phone').value.trim();
+            tryingOfficer = OFFICERS.find(o => o.phone === phone);
+            
+            if (tryingOfficer) {
+                currentOTP = Math.floor(100000 + Math.random() * 900000).toString();
+                
+                // BACKEND: Transmit OTP to Command HQ API (N8N relay)
+                const payload = {
+                    action_type: "OTP_SMS_REQUEST",
+                    unique_id: tryingOfficer.id,
+                    phone: phone,
+                    otp_code: currentOTP,
+                    message: `Officer Login OTP: ${currentOTP}`
+                };
+                console.log("Tactical OTP Dispatch:", JSON.stringify(payload, null, 2));
+                
+                try {
+                    fetch(WEBHOOK_URL, { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload) 
+                    });
+                } catch(e) {
+                    console.warn(e);
+                }
+
+                alert(`🚨 [API TRIGGERED]:\nOTP deployed to backend for ${phone}.\n(For Dev testing: ${currentOTP})`);
+                document.getElementById('otp-group').style.display = 'block';
+                document.getElementById('btn-send-otp').innerText = '📩 RESEND OTP';
+            } else {
+                alert("Unregistered Mobile Number. Access Denied Contact Command HQ.");
+            }
+        }
+
+        function handleOfficerLogin() {
+            const typedOTP = document.getElementById('o-otp').value.trim();
+            if (typedOTP === currentOTP && tryingOfficer) {
+                loginSuccess(tryingOfficer);
+                currentOTP = null; // Clear OTP state
+            } else {
+                alert("INVALID OTP");
+            }
+        }
+
+        function handleSignup() {
+            const n = document.getElementById('reg-name').value;
+            const e = document.getElementById('reg-email').value;
+            const p = document.getElementById('reg-pass').value;
+            if (!n || !e || !p) return;
+            const users = JSON.parse(localStorage.getItem('safereport_users') || '[]');
+            const nu = { name: n, email: e, pass: p, role: 'civilian' };
+            users.push(nu);
+            localStorage.setItem('safereport_users', JSON.stringify(users));
+            loginSuccess(nu);
+        }
+
+        function loginSuccess(u) {
+            state.userRole = u.role;
+            localStorage.setItem('safereport_session', JSON.stringify(u));
+            document.getElementById('auth-overlay').style.display = 'none';
+            document.body.className = `role-${u.role}`;
+            document.getElementById('app-wrapper').style.display = 'flex';
+            if (u.role === 'officer') {
+                document.getElementById('officer-name-display').innerText = u.name;
+                document.getElementById('officer-badge-display').innerText = `BADGE: ${u.id}`;
+            }
+            if (u.role === 'admin' || u.role === 'police') {
+                setTimeout(() => {
+                    initLeafletMap();
+                    renderMap();
+                    fetchSheetsIncidents();
+                }, 300); // Allow DOM reflow rendering
+                setInterval(pollAdminActions, 2000);
+            }
+            initApp();
+        }
+
+        let dutyWatchId = null;
+        let gpsSyncInterval = null;
+        let officerIncidentInterval = null;
+        let latestCoords = null;
+
+        function sendLocationPing(status) {
+            const s = JSON.parse(localStorage.getItem('safereport_session'));
+            if (!s || !latestCoords) return;
+            
+            const timeStr = new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+            const payload = {
+                badge_id: s.id,
+                name: s.name,
+                phone: s.phone,
+                lat: latestCoords.lat,
+                lng: latestCoords.lng,
+                status: status,
+                timestamp: timeStr
+            };
+
+            fetch(OFFICER_WEBHOOK, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(() => {
+                document.getElementById('gps-last-sync').innerText = `Last updated: ${timeStr}`;
+            }).catch(e => console.warn("GPS Sync Error:", e));
+        }
+
+        function toggleDuty(isStart) {
+            const badge = document.getElementById('duty-badge');
+            const btnStart = document.getElementById('btn-start-duty');
+            const btnEnd = document.getElementById('btn-end-duty');
+            const statusInd = document.getElementById('gps-status-indicator');
+            
+            if (isStart) {
+                badge.className = 'duty-status on';
+                badge.innerText = '🟢 ON DUTY';
+                btnStart.style.display = 'none';
+                btnEnd.style.display = 'block';
+                statusInd.innerText = '🟢 Active';
+                
+                if (navigator.geolocation) {
+                    dutyWatchId = navigator.geolocation.watchPosition(pos => {
+                        const firstFix = !latestCoords;
+                        latestCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                        document.getElementById('telemetry-lat').innerText = pos.coords.latitude.toFixed(6);
+                        document.getElementById('telemetry-lng').innerText = pos.coords.longitude.toFixed(6);
+
+                        // FIX: Update the global dispatch mapping coordinates
+                        const s = JSON.parse(localStorage.getItem('safereport_session'));
+                        if (s && s.role === 'officer') {
+                            let currUnits = JSON.parse(localStorage.getItem('safereport_units')) || units;
+                            const myUnit = currUnits.find(u => u.id === s.id);
+                            if (myUnit) {
+                                myUnit.lat = pos.coords.latitude;
+                                myUnit.lng = pos.coords.longitude;
+                                myUnit.lastUpdated = new Date().toLocaleTimeString('en-US', { hour12: false });
+                                localStorage.setItem('safereport_units', JSON.stringify(currUnits));
+                                units = currUnits;
+                            }
+                        }
+
+                        if (firstFix) sendLocationPing('on_duty');
+                    }, err => {
+                        console.warn("Location error:", err);
+                        document.getElementById('telemetry-lat').innerText = 'ERROR';
+                        document.getElementById('telemetry-lng').innerText = 'ERROR';
+                        statusInd.innerText = '⚠️ Error';
+                    }, { enableHighAccuracy: true });
+
+                    gpsSyncInterval = setInterval(() => {
+                        sendLocationPing('on_duty');
+                    }, 30000);
+                    officerIncidentInterval = setInterval(pollForIncidents, 2000);
+                } else {
+                    alert("Geolocation is not supported by this browser.");
+                }
+            } else {
+                badge.className = 'duty-status off';
+                badge.innerText = '🔴 OFF DUTY';
+                btnStart.style.display = 'block';
+                btnEnd.style.display = 'none';
+                const lsi = document.getElementById('leave-status-indicator');
+                if(lsi) lsi.style.display = 'none';
+                statusInd.innerText = '🔴 Stopped';
+                
+                if (dutyWatchId !== null) {
+                    navigator.geolocation.clearWatch(dutyWatchId);
+                    dutyWatchId = null;
+                }
+                if (gpsSyncInterval !== null) {
+                    clearInterval(gpsSyncInterval);
+                    gpsSyncInterval = null;
+                }
+                if (officerIncidentInterval !== null) {
+                    clearInterval(officerIncidentInterval);
+                    officerIncidentInterval = null;
+                }
+                document.getElementById('officer-incident-panel').style.display = 'none';
+                
+                if (latestCoords) {
+                    sendLocationPing('off_duty');
+                    latestCoords = null; // Reset for next duty shift
+                }
+
+                document.getElementById('telemetry-lat').innerText = 'WAITING...';
+                document.getElementById('telemetry-lng').innerText = 'WAITING...';
+            }
+        }
+
+        function pollAdminActions() {
+            const logsPane = document.getElementById('alert-logs'); // Right pane
+            const vLeave = localStorage.getItem('safereport_leave_requests');
+            if(vLeave && logsPane) {
+                const reqs = JSON.parse(vLeave).filter(r => r.status === 'Pending');
+                let existingHeader = document.getElementById('leave-req-header');
+                
+                if(reqs.length > 0) {
+                    if(!existingHeader) {
+                        logsPane.insertAdjacentHTML('afterbegin', `<div id="leave-req-header" style="padding: 10px; background: rgba(249, 115, 22, 0.1); border-left: 2px solid var(--color-orange); margin-bottom: 10px; border-radius: 4px;"></div>`);
+                        existingHeader = document.getElementById('leave-req-header');
+                    }
+                    existingHeader.innerHTML = `
+                        <strong style="color:var(--color-orange)">🛑 PENDING COMPLAINTS / LEAVE REQUESTS (${reqs.length})</strong>
+                        ${reqs.map(r => `
+                            <div style="margin-top: 8px; font-size: 0.75rem; background: rgba(0,0,0,0.5); padding: 8px; border-radius: 6px;">
+                                <strong>${r.unitName} [${r.unitId}]</strong> requests leave.<br>
+                                <span style="color:var(--color-grey)">Reason: ${r.reason}</span><br>
+                                <div style="display:flex; gap: 5px; margin-top: 6px;">
+                                    <button onclick="respondLeave('${r.reqId}', 'Approved')" style="flex:1; background:var(--color-green); color:black; border:none; padding:6px; border-radius:4px; font-weight:bold; cursor:pointer;">APPROVE</button>
+                                    <button onclick="respondLeave('${r.reqId}', 'Denied')" style="flex:1; background:var(--color-red); color:white; border:none; padding:6px; border-radius:4px; font-weight:bold; cursor:pointer;">DENY</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    `;
+                } else if (existingHeader) {
+                    existingHeader.remove();
+                }
+            }
+        }
+
+        async function fetchSheetsIncidents() {
+            if(!centralMap || GOOGLE_SHEETS_API.includes('PASTE_YOUR')) return;
+            
+            try {
+                const response = await fetch(GOOGLE_SHEETS_API);
+                const data = await response.json();
+                
+                // Assuming data is an array of objects: [{ lat: 17.1, lng: 78.2, title: "Crash", ... }]
+                data.forEach(inc => {
+                    if(inc.lat && inc.lng) {
+                        const marker = L.circleMarker([parseFloat(inc.lat), parseFloat(inc.lng)], { radius: 8, fillColor: '#f03e5a', color: '#fff', weight: 2, fillOpacity: 0.8 }).bindPopup(`🚨 <b>Sheets Incident</b><br>${inc.title || 'Reported Issue'}`).addTo(centralMap);
+                        centralMapMarkers.push(marker);
+                    }
+                });
+            } catch (err) {
+                console.warn("Failed to fetch Google Sheets incidents:", err);
+            }
+        }
+
+        function pollForIncidents() {
+            const s = JSON.parse(localStorage.getItem('safereport_session'));
+            if (!s || s.role !== 'officer' || !latestCoords) return;
+
+            // 1. Leave Status
+            const myLeavesStr = localStorage.getItem('safereport_leave_requests');
+            if (myLeavesStr) {
+                const myReqs = JSON.parse(myLeavesStr).filter(r => r.unitId === s.id);
+                if(myReqs.length > 0) {
+                    const latestReq = myReqs[myReqs.length - 1];
+                    const lsi = document.getElementById('leave-status-indicator');
+                    if(latestReq.status === 'Pending') {
+                        lsi.style.display = 'block';
+                        lsi.innerText = '⏳ LEAVE PENDING ADMIN APPROVAL...';
+                        lsi.style.color = 'var(--color-orange)';
+                        lsi.style.borderColor = 'var(--color-orange)';
+                    } else if (latestReq.status === 'Approved') {
+                        // Admin approved! Auto end duty.
+                        let allR = JSON.parse(myLeavesStr);
+                        allR = allR.filter(r => r.reqId !== latestReq.reqId);
+                        localStorage.setItem('safereport_leave_requests', JSON.stringify(allR));
+                        
+                        toggleDuty(false);
+                        alert("HQ Approved your leave request. You are now OFF DUTY.");
+                        return;
+                    } else if (latestReq.status === 'Denied') {
+                        lsi.style.display = 'block';
+                        lsi.innerText = '❌ LEAVE DENIED BY HQ';
+                        lsi.style.color = 'var(--color-red)';
+                        lsi.style.borderColor = 'var(--color-red)';
+                        setTimeout(() => lsi.style.display = 'none', 5000);
+                        
+                        let allR = JSON.parse(myLeavesStr);
+                        allR = allR.filter(r => r.reqId !== latestReq.reqId);
+                        localStorage.setItem('safereport_leave_requests', JSON.stringify(allR));
+                    }
+                }
+            }
+
+            // 2. Incident Tracker Map Sync
+            const incidentString = localStorage.getItem('safereport_active_incident');
+            if(!incidentString) {
+                document.getElementById('officer-incident-panel').style.display = 'none';
+                return;
+            }
+
+            const incident = JSON.parse(incidentString);
+            const panel = document.getElementById('officer-incident-panel');
+
+            if (incident && incident.assignedUnit === s.id && incident.status === 'active') {
+                panel.style.display = 'block';
+                document.getElementById('officer-incident-type').innerText = incident.type || 'EMERGENCY SOS';
+                document.getElementById('officer-incident-coords').innerText = `+${incident.cLat.toFixed(4)}, +${incident.cLng.toFixed(4)}`;
+                
+                const mapsUrl = `https://maps.google.com/?q=${incident.cLat},${incident.cLng}`;
+                document.getElementById('officer-maps-link').href = mapsUrl;
+
+                if (window.lastAlertedIncident !== incident.cLat) {
+                    window.lastAlertedIncident = incident.cLat;
+                    // Trigger SMS/Alarm specifically on the Police officer's device side
+                    alert(`🚨 COMMAND DISPATCH [SMS to ${s.phone}]:\n\nEMERGENCY INCIDENT ASSIGNED!\nType: ${incident.type}\nLIVE MAPS TRACKING:\n${mapsUrl}\n\nStart your approach immediately.`);
+                }
+
+                renderDispatchRouteMap(latestCoords.lat, latestCoords.lng, incident.cLat, incident.cLng, 'officer-');
+            } else {
+                panel.style.display = 'none';
+                window.lastAlertedIncident = null;
+            }
+        }
+
+        function resolveOfficerIncident() {
+            const s = JSON.parse(localStorage.getItem('safereport_session'));
+            const incidentString = localStorage.getItem('safereport_active_incident');
+            if(!s || !incidentString) return;
+
+            const i = JSON.parse(incidentString);
+            if(i.assignedUnit === s.id) {
+                // Free the unit
+                updateUnitStatus(s.id, 'Free');
+                localStorage.removeItem('safereport_active_incident');
+                document.getElementById('officer-incident-panel').style.display = 'none';
+
+                // Add log to action center explicitly just via DOM for demo since it's local
+                const payload = {
+                    trigger: "hq_manual_dispatch", // trigger visual
+                    location: "Resolved target",
+                    officer_phone: s.phone,
+                    officer_name: s.name,
+                    description: "SUCCESSFULLY RESOLVED & CLEARED TARGET"
+                };
+                fetch(WEBHOOK_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+                alert('Crisis successfully resolved! Routing cleared. You are marked Free.');
+            }
+        }
+
+        function requestLeave() {
+            const s = JSON.parse(localStorage.getItem('safereport_session'));
+            if(!s) return;
+
+            const reason = prompt("Enter reason for requesting leave/offline status:");
+            if(!reason) return;
+
+            const current = JSON.parse(localStorage.getItem('safereport_leave_requests') || '[]');
+            current.push({
+                reqId: 'REQ-' + Date.now(),
+                unitId: s.id,
+                unitName: s.name,
+                reason: reason,
+                status: 'Pending',
+                timestamp: new Date().toLocaleTimeString()
+            });
+            localStorage.setItem('safereport_leave_requests', JSON.stringify(current));
+            
+            pollForIncidents();
+        }
+
+        function respondLeave(reqId, newStatus) {
+            let current = JSON.parse(localStorage.getItem('safereport_leave_requests') || '[]');
+            const r = current.find(x => x.reqId === reqId);
+            if(r) {
+                r.status = newStatus;
+                localStorage.setItem('safereport_leave_requests', JSON.stringify(current));
+                
+                if(newStatus === 'Approved') {
+                    updateUnitStatus(r.unitId, 'Busy');
+                }
+                pollAdminActions();
+            }
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('safereport_session');
+            location.reload();
+        }
+
+        // --- CORE UI ---
+        function setLanguage(l) {
+            state.lang = l;
+            localStorage.setItem('safereport_lang', l);
+            document.querySelectorAll('.lang-pill').forEach(p => p.classList.toggle('active', p.innerText.toLowerCase().includes(l) || p.innerText.includes('తెలుగు') && l==='te' || p.innerText.includes('हिंदी') && l==='hi'));
+            
+            document.querySelectorAll('.lang-txt').forEach(el => {
+                const txt = el.getAttribute(`data-${l}`);
+                if (txt) el.innerText = txt;
+            });
+
+            // Update placeholder
+            const manual = document.getElementById('manual-text');
+            if (l === 'te') manual.placeholder = "క్లుప్తంగా చెప్పండి...";
+            else if (l === 'hi') manual.placeholder = "संक्षेप में बताएं...";
+            else manual.placeholder = "Describe briefly...";
+        }
+
+        function selectType(btn, type) {
+            document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            state.selectedType = type;
+        }
+
+        function toggleText() {
+            document.getElementById('manual-text').classList.toggle('hidden');
+        }
+
+        function handlePhoto(input) {
+            if (input.files.length > 0) {
+                state.photoAdded = true;
+                const btn = document.getElementById('add-photo-btn');
+                btn.classList.add('added');
+                const txt = state.lang === 'te' ? '📷 ఫోటో జోడించారు ✓' : state.lang === 'hi' ? '📷 फोटो जोड़ा गया ✓' : '📷 Photo Added ✓';
+                btn.querySelector('.lang-txt').innerText = txt;
+            }
+        }
+
+        // --- FEATURES ---
+        function initApp() {
+            setLanguage(state.lang);
+            if (state.userRole !== 'civilian') {
+                renderMap();
+                renderUnits();
+            }
+            
+            if (state.userRole === 'civilian') {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(async pos => {
+                        state.lat = pos.coords.latitude;
+                        state.lng = pos.coords.longitude;
+                        state.locText = `${state.lat.toFixed(5)}, ${state.lng.toFixed(5)}`;
+                        
+                        try {
+                            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${state.lat}&lon=${state.lng}&zoom=18&addressdetails=1`);
+                            const data = await res.json();
+                            if (data && data.display_name) state.locText = data.display_name;
+                        } catch (e) {
+                            console.warn("Reverse geocoding failed", e);
+                        }
+
+                        const bar = document.getElementById('gps-bar');
+                        if (bar) {
+                            bar.className = 'gps-status-bar gps-success';
+                            const txt = bar.querySelector('.lang-txt');
+                            txt.innerText = state.lang === 'te' ? '✅ లొకేషన్ దొరికింది' : state.lang === 'hi' ? '✅ स्थान मिला' : '✅ Location found — Ready to report';
+                            state.gpsCaptured = true;
+                        }
+                    }, err => {
+                        console.warn("Civilian GPS Error", err);
+                        const bar = document.getElementById('gps-bar');
+                        if (bar) {
+                            bar.className = 'gps-status-bar gps-error';
+                            const txt = bar.querySelector('.lang-txt');
+                            txt.innerText = state.lang === 'te' ? '❌ లొకేషన్ విఫలమైంది' : state.lang === 'hi' ? '❌ स्थान विफल' : '❌ Failed to get location';
+                        }
+                    }, { enableHighAccuracy: true });
+                }
+            }
+        }
+
+        // Tactical Logic
+        let defaultUnits = [];
+        let units = JSON.parse(localStorage.getItem('safereport_units')) || defaultUnits;
+
+        function persistState() {
+            localStorage.setItem('safereport_officers', JSON.stringify(OFFICERS));
+            localStorage.setItem('safereport_units', JSON.stringify(units));
+        }
+
+        function updateUnitStatus(id, newStatus) {
+            const unit = units.find(u => u.id === id);
+            if(unit) {
+                unit.status = newStatus;
+                unit.lastUpdated = new Date().toLocaleTimeString('en-US', { hour12: false });
+            }
+            persistState();
+            renderUnits();
+            renderMap();
+        }
+
+        function renderUnits() {
+            // PHASE 2: Fleet Status
+            const list = document.getElementById('unit-list');
+            if (list) {
+                let freeCount = 0, busyCount = 0, assignCount = 0;
+                
+                list.innerHTML = units.map(u => {
+                    if (u.status === 'Free') freeCount++;
+                    if (u.status === 'Busy') busyCount++;
+                    if (u.status === 'Assigned') assignCount++;
+
+                    return `
+                    <div style="background: rgba(255,255,255,0.03); padding: 0.8rem; border-radius: 10px; border-left: 3px solid ${u.status === 'Free' ? 'var(--color-green)' : (u.status === 'Assigned' ? 'var(--color-cyan)' : 'var(--color-orange)')}; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 700; font-size: 0.85rem; display:flex; justify-content: space-between;">
+                                ${u.name}
+                                <span style="font-size: 0.6rem; color:var(--color-grey); font-family:var(--font-mono);">🕒 ${u.lastUpdated}</span>
+                            </div>
+                            <div style="font-size: 0.65rem; color: var(--color-grey); margin-top:2px; font-family:var(--font-mono);">
+                                ID: ${u.id} | Ph: ${u.phone}
+                            </div>
+                            <div style="font-size: 0.65rem; color: var(--color-cyan); margin-top:2px; font-family:var(--font-mono);">
+                                LAT: ${u.lat.toFixed(5)}  LNG: ${u.lng.toFixed(5)}
+                            </div>
+                            <div style="margin-top: 6px;">
+                                <select class="admin-only-select" onchange="updateUnitStatus('${u.id}', this.value)" style="background:var(--bg-card); color:var(--color-white); border:1px solid rgba(255,255,255,0.2); border-radius:4px; font-size:0.65rem; padding:2px;">
+                                    <option value="Free" ${u.status === 'Free' ? 'selected' : ''}>🟢 Free</option>
+                                    <option value="Assigned" ${u.status === 'Assigned' ? 'selected' : ''}>🔵 Assigned</option>
+                                    <option value="Busy" ${u.status === 'Busy' ? 'selected' : ''}>🟠 Busy</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="admin-only-btn" onclick="deleteOfficer('${u.id}')" style="background:none; border:none; color:var(--color-red); cursor:pointer; font-size:1.1rem; opacity:0.8; transition:0.2s; margin-left: 10px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'" title="Remove Officer">🗑️</button>
+                    </div>`;
+                }).join('');
+
+                const statFree = document.getElementById('stat-free');
+                const statAssign = document.getElementById('stat-assign');
+                const statBusy = document.getElementById('stat-busy');
+                if(statFree) statFree.innerText = `🟢 FREE: ${freeCount}`;
+                if(statAssign) statAssign.innerText = `🔵 DISPATCHED: ${assignCount}`;
+                if(statBusy) statBusy.innerText = `🟠 BUSY: ${busyCount}`;
+            }
+
+            // PHASE 1: Active Dispatches
+            const p1List = document.getElementById('active-incidents-list');
+            if (p1List) {
+                const incidentStr = localStorage.getItem('safereport_active_incident');
+                const i = incidentStr ? JSON.parse(incidentStr) : null;
+                
+                if (i && i.status === 'active') {
+                    const assignedU = units.find(u => u.id === i.assignedUnit) || { name: 'Unknown', id: i.assignedUnit };
+                    document.getElementById('phase1-stats').innerText = `🚨 1 ACTIVE CRISIS TARGET`;
+                    p1List.innerHTML = `
+                    <div style="background: rgba(240,62,90,0.1); padding: 1rem; border-radius: 10px; border: 1px solid var(--color-red); margin-bottom: 8px;">
+                        <div style="font-weight: 800; color: var(--color-red); margin-bottom: 4px; font-size:0.85rem;">🚨 ${i.type || 'EMERGENCY SOS'}</div>
+                        <div style="font-size: 0.75rem; color: var(--color-white); margin-bottom: 8px;">
+                            Assigned To: <strong style="color:var(--color-cyan)">${assignedU.name} [${assignedU.id}]</strong>
+                        </div>
+                        <div style="font-family: var(--font-mono); font-size: 0.65rem; color: var(--color-grey); margin-bottom: 12px;">
+                            DESTINATION:<br>
+                            LAT: ${i.cLat.toFixed(5)}<br>
+                            LNG: ${i.cLng.toFixed(5)}
+                        </div>
+                        <button onclick="localStorage.removeItem('safereport_active_incident'); renderUnits(); renderMap();" style="width: 100%; padding: 6px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 4px; font-size: 0.65rem; cursor: pointer; transition: 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'">MARK RESOLVED (Archive)</button>
+                    </div>`;
+                } else {
+                    document.getElementById('phase1-stats').innerText = `NO ACTIVE DISPATCHES`;
+                    p1List.innerHTML = `<div style="text-align:center; padding: 2rem; opacity:0.5; font-size:0.75rem;">Coast is clear.</div>`;
+                }
+            }
+        }
+
+        let centralMap = null;
+        let centralMapMarkers = [];
+        let centralMapRoutingLine = null;
+
+        function initLeafletMap() {
+            if(centralMap) return;
+            const mapContainer = document.getElementById('leaflet-tactical-map');
+            if(!mapContainer) return;
+
+            centralMap = L.map('leaflet-tactical-map', { zoomControl: false }).setView([17.3850, 78.4867], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(centralMap);
+        }
+
+        function switchAdminTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            if(event && event.target) { event.target.classList.add('active'); }
+            document.getElementById(tabId).classList.add('active');
+        }
+
+        function renderMap() {
+            if(!centralMap) return;
+
+            // Clear markers
+            centralMapMarkers.forEach(m => centralMap.removeLayer(m));
+            centralMapMarkers = [];
+            if(centralMapRoutingLine) {
+                centralMap.removeLayer(centralMapRoutingLine);
+                centralMapRoutingLine = null;
+            }
+
+            const sessionObj = localStorage.getItem('safereport_session');
+            const session = sessionObj ? JSON.parse(sessionObj) : null;
+            const isOfficer = session && session.role === 'officer';
+            const incidentStr = localStorage.getItem('safereport_active_incident');
+            const activeIncident = incidentStr ? JSON.parse(incidentStr) : null;
+
+            if (isOfficer && activeIncident && activeIncident.assignedUnit === session.id && activeIncident.status === 'active') {
+                const MyUnit = units.find(u => u.id === session.id);
+                if(MyUnit) {
+                    const oMarker = L.circleMarker([MyUnit.lat, MyUnit.lng], { radius: 8, fillColor: '#22d3ee', color: '#fff', weight: 2, fillOpacity: 1 }).bindPopup("🚔 YOU ARE HERE").addTo(centralMap);
+                    const vMarker = L.circleMarker([activeIncident.cLat, activeIncident.cLng], { radius: 8, fillColor: '#f03e5a', color: '#fff', weight: 2, fillOpacity: 1 }).bindPopup("🚨 DISTRESS TARGET").addTo(centralMap);
+                    centralMapRoutingLine = L.polyline([[MyUnit.lat, MyUnit.lng], [activeIncident.cLat, activeIncident.cLng]], { color: '#22d3ee', weight: 3, dashArray: '5, 10' }).addTo(centralMap);
+                    
+                    centralMapMarkers.push(oMarker, vMarker);
+                    centralMap.fitBounds([[MyUnit.lat, MyUnit.lng], [activeIncident.cLat, activeIncident.cLng]], { padding: [50, 50] });
+                }
+                return;
+            }
+
+            // Global mapping for admin or free officers
+            let allCoords = [];
+            units.forEach(u => {
+                let color = u.status === 'Free' ? '#22c55e' : (u.status === 'Assigned' ? '#22d3ee' : '#f97316');
+                const m = L.circleMarker([u.lat, u.lng], { radius: 6, fillColor: color, color: '#000', weight: 2, fillOpacity: 1 }).bindPopup(`<b>${u.name}</b><br>ID: ${u.id}<br>Status: ${u.status}`).addTo(centralMap);
+                centralMapMarkers.push(m);
+                allCoords.push([u.lat, u.lng]);
+            });
+
+            if (activeIncident && activeIncident.status === 'active') {
+                const iMarker = L.circleMarker([activeIncident.cLat, activeIncident.cLng], { radius: 8, fillColor: '#f03e5a', color: '#fff', weight: 2, fillOpacity: 1 }).bindPopup(`🚨 Incident: ${activeIncident.type || 'SOS'}<br>Assigned: ${activeIncident.assignedUnit}`).addTo(centralMap);
+                centralMapMarkers.push(iMarker);
+                allCoords.push([activeIncident.cLat, activeIncident.cLng]);
+
+                const assignedU = units.find(u => u.id === activeIncident.assignedUnit);
+                if(assignedU) {
+                    centralMapRoutingLine = L.polyline([[assignedU.lat, assignedU.lng], [activeIncident.cLat, activeIncident.cLng]], { color: '#22d3ee', weight: 2, dashArray: '4, 8' }).addTo(centralMap);
+                }
+            }
+
+            if(allCoords.length > 0) centralMap.fitBounds(L.latLngBounds(allCoords), { padding: [30, 30] });
+        }
+
+        async function adminDispatch() {
+            const booth = document.getElementById('i-booth').value;
+            const payload = {
+                trigger: "hq_manual_dispatch",
+                location: booth,
+                officer_phone: "+91 90321 96738",
+                officer_name: "UNIT_101_COMMAND",
+                description: "HQ MANUAL OVERRIDE"
+            };
+
+            fetch(WEBHOOK_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+
+            const logs = document.getElementById('alert-logs');
+            const alertDiv = document.createElement('div');
+            alertDiv.style.background = 'rgba(240,62,90,0.1)';
+            alertDiv.style.padding = '8px';
+            alertDiv.style.borderRadius = '6px';
+            alertDiv.style.borderLeft = '2px solid var(--color-red)';
+            alertDiv.innerHTML = `<div style="font-weight:700">HQ DISPATCH</div><div style="opacity:0.6">${booth}</div>`;
+            logs.prepend(alertDiv);
+            alert("Dispatch Order Sent to units.");
+        }
+
+        // Speech API
+        let recognition;
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.onresult = (e) => {
+                const res = e.results[0][0].transcript;
+                document.getElementById('speech-transcript').innerText = res;
+                document.getElementById('speech-transcript').style.display = 'block';
+                state.isListening = false;
+                document.getElementById('mic-btn').classList.remove('listening');
+            };
+            recognition.onerror = () => {
+                state.isListening = false;
+                document.getElementById('mic-btn').classList.remove('listening');
+            };
+        }
+
+        function toggleSpeech() {
+            if (!recognition) return alert("Speech not supported");
+            if (state.isListening) {
+                recognition.stop();
+                state.isListening = false;
+                document.getElementById('mic-btn').classList.remove('listening');
+            } else {
+                recognition.lang = state.lang === 'te' ? 'te-IN' : state.lang === 'hi' ? 'hi-IN' : 'en-IN';
+                recognition.start();
+                state.isListening = true;
+                document.getElementById('mic-btn').classList.add('listening');
+                document.getElementById('mic-status').innerText = state.lang === 'te' ? 'వింటున్నాం...' : state.lang === 'hi' ? 'सुन रहे हैं...' : 'Listening...';
+            }
+        }
+
+        async function dispatchSOS() {
+            // Validation 1: GPS
+            if (!state.gpsCaptured) {
+                const msg = state.lang === 'te' ? "GPS కోసం వేచి ఉండండి" : state.lang === 'hi' ? "GPS का इंतज़ार करें" : "Waiting for GPS...";
+                alert(msg);
+                document.getElementById('gps-bar').classList.add('gps-error');
+                return;
+            }
+
+            // Validation 2: Incident Type
+            if (!state.selectedType) {
+                const msg = state.lang === 'te' ? "ముందుగా సమస్యను ఎంచుకోండి" : state.lang === 'hi' ? "पहले समस्या चुनें" : "Please select what happened first";
+                alert(msg);
+                document.querySelector('.incident-grid').style.animation = 'shake 0.5s';
+                setTimeout(() => document.querySelector('.incident-grid').style.animation = '', 500);
+                return;
+            }
+
+            const btn = document.getElementById('master-call-btn');
+            const mainTxt = btn.querySelector('.btn-text-main');
+            const subTxt = btn.querySelector('.btn-text-sub');
+            
+            // UI Loading state
+            mainTxt.innerText = state.lang === 'te' ? 'పిలుస్తున్నాం...' : state.lang === 'hi' ? 'कॉल कर रहे हैं...' : 'Calling...';
+            subTxt.innerText = '···';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+
+            const timeStr = new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+
+            // NEAREST OFFICER DETECTION & AUTO-CALCULATION
+            let nearestId = null;
+            let minDistance = Infinity;
+            units.forEach(u => {
+                if(u.status === 'Free') {
+                    // Geometric distance evaluation
+                    let dist = Math.pow(u.lat - state.lat, 2) + Math.pow(u.lng - state.lng, 2);
+                    if(dist < minDistance) {
+                        minDistance = dist;
+                        nearestId = u.id;
+                    }
+                }
+            });
+
+            let assignedOfficer = "Local PD Node";
+            let assignedDistText = "Assigning fallback patrol unit...";
+            
+            if(nearestId) {
+                const u = units.find(x => x.id === nearestId);
+                u.status = 'Assigned'; // Flag to assigned immediately
+                u.lastUpdated = new Date().toLocaleTimeString('en-US', { hour12: false });
+                assignedOfficer = u.name;
+                assignedDistText = `Officer found ${(Math.sqrt(minDistance)*111).toFixed(1)}km away`;
+                persistState();
+                renderUnits();
+                renderMap();
+
+                // Generate Admin Incident Log Event
+                const logs = document.getElementById('alert-logs');
+                if(logs) {
+                    const alertDiv = document.createElement('div');
+                    alertDiv.style.background = 'rgba(240,62,90,0.1)';
+                    alertDiv.style.padding = '8px';
+                    alertDiv.style.borderRadius = '6px';
+                    alertDiv.style.borderLeft = '2px solid var(--color-red)';
+                    alertDiv.style.marginBottom = '8px';
+                    alertDiv.innerHTML = `<div style="font-weight:700">🚨 OFFICER ACCOUNT SERVICES SIGNAL</div>
+                                          <div style="opacity:0.8; font-size:10px;">TYPE: ${state.selectedType}</div>
+                                          <div style="font-family:var(--font-mono); font-size:9px; color:var(--color-cyan); margin-top:2px;">LAT/LNG: ${state.lat.toFixed(4)}, ${state.lng.toFixed(4)}</div>
+                                          <div style="opacity:0.8; font-size:10px; color:var(--color-green); margin-top:2px;">DISPATCHED: ${u.name} (UNIT ${u.id})</div>
+                                          <div style="opacity:0.5; font-size:9px; margin-top:2px;">${timeStr}</div>`;
+                    logs.prepend(alertDiv);
+                }
+
+                // Push an immediate alert payload (simulates the instant notification)
+                setTimeout(() => {
+                    const mapsUrl = `https://maps.google.com/?q=${state.lat},${state.lng}`;
+                    alert(`🚨 [SIMULATED SMS to ${u.phone}]:\n\nCRITICAL INCIDENT! RUSH TO LOCATION!\nType: ${state.selectedType}\n\nLIVE TARGET TRACKING LINK:\n${mapsUrl}\n\nAssigned Asset: ${u.id} - ${u.name}`);
+                }, 500); 
+
+                renderDispatchRouteMap(u.lat, u.lng, state.lat, state.lng);
+
+                // Export Incident Payload (Cross Session Auth Sync Mock)
+                localStorage.setItem('safereport_active_incident', JSON.stringify({
+                    assignedUnit: nearestId,
+                    cLat: state.lat,
+                    cLng: state.lng,
+                    type: state.selectedType,
+                    status: 'active'
+                }));
+            }
+
+            document.querySelector('.officer-name').innerText = assignedOfficer;
+            document.querySelector('.officer-line:nth-of-type(2)').innerText = assignedDistText;
+
+            const officerObj = units.find(u => u.id === nearestId) || {};
+            const officerPhone = officerObj.phone || "Unknown";
+
+            const payload = {
+                trigger: "civilian_panic_sos",
+                type: state.selectedType,
+                details: (document.getElementById('manual-text').value || document.getElementById('speech-transcript').innerText || "No details").trim(),
+                user_lat: state.lat,
+                user_lng: state.lng,
+                user_location: {
+                    lat: state.lat,
+                    lng: state.lng
+                },
+                timestamp: timeStr,
+                assigned_unit: nearestId || 'fallback',
+                assigned_officer_phone: officerPhone,
+                nearest_officer: {
+                    id: nearestId || 'fallback',
+                    phone: officerPhone,
+                    name: assignedOfficer || "Unknown",
+                    distance_km: (minDistance === Infinity ? 0 : Math.sqrt(minDistance) * 111).toFixed(2)
+                }
+            };
+
+            const commanderPayload = {
+              "action_type": "INCIDENT_DISPATCH",
+              "officer_auth": {
+                "is_verified": true,
+                "unique_id": assignedOfficer !== "Local PD Node" ? (nearestId || "") : "FALLBACK",
+                "name": assignedOfficer || "Unknown",
+                "phone": officerPhone,
+                "email": "N/A"
+              },
+              "login_permission": "GRANTED",
+              "dispatch_logic": {
+                "priority": 1,
+                "message": `Immediate deployment to +${state.lat.toFixed(4)}, +${state.lng.toFixed(4)}`
+              }
+            };
+            console.log("Tactical Commander Output:", JSON.stringify(commanderPayload, null, 2));
+
+            const mapsLink = document.getElementById('success-maps-link');
+            if(mapsLink) mapsLink.href = `https://maps.google.com/?q=${state.lat},${state.lng}`;
+
+            const mergedPayload = { ...payload, ...commanderPayload };
+
+            // Trigger n8n
+            try { 
+                fetch(WEBHOOK_URL, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(mergedPayload) 
+                }); 
+                console.log("SOS Signal Initialized to N8N backend.");
+            } catch(e) {
+                console.warn("Network sync failed, using offline fallback", e);
+            }
+
+            // Always show success screen for the demo
+            setTimeout(() => {
+                document.getElementById('sos-main-content').classList.add('hidden');
+                document.getElementById('success-view').classList.remove('hidden');
+                runStepAnimation();
+            }, 1200);
+        }
+
+        function runStepAnimation() {
+            const steps = [
+                { id: 'step-1', delay: 400 },
+                { id: 'step-2', delay: 1000 },
+                { id: 'step-active', delay: 1800, finalize: true }
+            ];
+            steps.forEach(s => {
+                setTimeout(() => {
+                    const el = document.getElementById(s.id);
+                    if (s.finalize) {
+                        el.classList.remove('active');
+                        el.classList.add('done');
+                        el.querySelector('.step-icon').innerText = '✅';
+                        document.getElementById('step-3').classList.add('done');
+                    } else {
+                        el.classList.add('done');
+                    }
+                }, s.delay);
+            });
+        }
+
+        let officerMapInstance = null;
+        let civilianMiniMapInstance = null;
+        let routeLayerStore = [];
+
+        function renderDispatchRouteMap(oLat, oLng, cLat, cLng, prefix='') {
+            const mapNodeId = prefix ? 'officer-dispatch-map' : 'mini-dispatch-map';
+            const mapNode = document.getElementById(mapNodeId);
+            if(!mapNode) return;
+            mapNode.style.display = 'block';
+
+            let mapInstance = prefix ? officerMapInstance : civilianMiniMapInstance;
+
+            // Initialize True Clarity Leaflet Map if it doesn't exist
+            if (!mapInstance) {
+                mapNode.innerHTML = ''; // Wipe out the old SVG fake minimap
+                mapInstance = L.map(mapNodeId, { zoomControl: false, attributionControl: false }).setView([cLat, cLng], 14);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapInstance);
+                
+                if(prefix) officerMapInstance = mapInstance; 
+                else civilianMiniMapInstance = mapInstance;
+            }
+
+            // Clear old routing layers
+            routeLayerStore.forEach(layer => mapInstance.removeLayer(layer));
+            routeLayerStore = [];
+
+            // Draw Real Markers & Route
+            const oMarker = L.circleMarker([oLat, oLng], { radius: 6, fillColor: '#00f2fe', color: '#fff', weight: 2, fillOpacity: 1 }).addTo(mapInstance);
+            const cMarker = L.circleMarker([cLat, cLng], { radius: 6, fillColor: '#f03e5a', color: '#fff', weight: 2, fillOpacity: 1 }).addTo(mapInstance);
+            
+            const routeLine = L.polyline([[oLat, oLng], [cLat, cLng]], { color: '#00f2fe', weight: 3, dashArray: '5, 10' }).addTo(mapInstance);
+            
+            routeLayerStore.push(oMarker, cMarker, routeLine);
+
+            // Auto-fit to target boundaries
+            mapInstance.fitBounds([[oLat, oLng], [cLat, cLng]], { padding: [30, 30] });
+        }
+
+        function resetSOS() {
+            location.reload();
+        }
+
+        function saveNewOfficer() {
+            const id = document.getElementById('new-off-id').value.trim();
+            const name = document.getElementById('new-off-name').value.trim();
+            const rank = document.getElementById('new-off-rank').value;
+            const phone = document.getElementById('new-off-phone').value.trim();
+            const email = document.getElementById('new-off-email').value.trim();
+            
+            if(!id || !name || !rank || !phone || !email) {
+                alert("Please fill all details (ID, Name, Rank, Mobile Number, Email).");
+                return;
+            }
+
+            // Commander Request: Output structured JSON logic
+            const payload = {
+              "action_type": "OFFICER_REGISTRATION",
+              "officer_auth": {
+                "is_verified": true,
+                "unique_id": id,
+                "name": `${rank} ${name}`,
+                "phone": phone,
+                "email": email
+              },
+              "login_permission": "GRANTED"
+            };
+            console.log("Tactical Commander Output:", JSON.stringify(payload, null, 2));
+            
+            // Add to officers for auth login
+            OFFICERS.push({
+                id: id,
+                pass: '1234', // default password for new officers
+                name: `${rank} ${name}`,
+                phone: phone,
+                role: 'officer'
+            });
+            
+            // Add to unit tracker on map randomly near center
+            units.push({
+                id: id,
+                name: `${rank} ${name}`,
+                lat: 17.39 + (Math.random() * 0.02 - 0.01),
+                lng: 78.48 + (Math.random() * 0.02 - 0.01),
+                phone: phone,
+                status: 'Free',
+                lastUpdated: new Date().toLocaleTimeString('en-US', { hour12: false })
+            });
+            
+            persistState();
+            renderUnits();
+            renderMap();
+            
+            document.getElementById('new-off-id').value = '';
+            document.getElementById('new-off-name').value = '';
+            document.getElementById('new-off-rank').value = '';
+            document.getElementById('new-off-phone').value = '';
+            document.getElementById('new-off-email').value = '';
+            
+            document.getElementById('add-officer-modal').style.display = 'none';
+            alert(`Officer ${rank} ${name} registered successfully! Default login password is '1234'.`);
+        }
+
+        function deleteOfficer(id) {
+            if(!confirm('Delete this officer profile completely?')) return;
+            OFFICERS = OFFICERS.filter(o => o.id !== id);
+            units = units.filter(u => u.id !== id);
+            persistState();
+            renderUnits();
+            renderMap();
+        }
+
+        window.onload = () => {
+            const s = localStorage.getItem('safereport_session');
+            if (s) loginSuccess(JSON.parse(s));
+            else toggleAuth('login');
+        }
+    </script>
+</body>
+</html>
